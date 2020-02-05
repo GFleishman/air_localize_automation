@@ -55,8 +55,12 @@ z_stride=${1?}; shift
 z_overlap=${1?}; shift
 params=${1?}; shift
 outdir=${1?}; shift
+dapi_channel=${1?}; shift
+dapi_correction_channels=${1?}; shift
+dapi_percentage=${1?}; shift
 
 channels=(${channels//,/ })
+dapi_correction_channels=(${dapi_correction_channels//,/ })
 
 # TODO: add prefix based on fixed/moving paths to job names to avoid
 #       dependency conflict between simultaneous runs
@@ -73,10 +77,17 @@ sleep 5
 
 for channel in ${channels[@]}; do
 
+  if [[ " ${dapi_correction_channels[@]} " =~ " ${channel} " ]]; then
+    dapi_correction="/${dapi_channel}/${scale} $dapi_percentage"
+  else
+    dapi_correction=""
+  fi
+
   for tile in $( ls -d ${tiledir}/*[0-9] ); do
       tile_num=`basename $tile`
       submit "air_localize${tile_num}_${channel}" '' 1 \
-      $AIR_LOCALIZE $image /${channel}/${scale} ${tile}/coords.txt $params $tile _${channel}.txt
+      $AIR_LOCALIZE $image /${channel}/${scale} ${tile}/coords.txt $params $tile _${channel}.txt \
+                    $dapi_correction
   done
 
   submit "merge_points" "air_localize*_${channel}" 1 \

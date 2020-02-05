@@ -72,6 +72,11 @@ if __name__ == '__main__':
     output      = sys.argv[5]
     suffix      = sys.argv[6]
 
+    dapi_subpath = None
+    if len(sys.argv) > 7:
+        dapi_subpath        = sys.argv[7]
+        dapi_factor         = np.float64(sys.argv[8])
+
     offset, extent = read_coords(coords)
     vox            = n5mu.read_voxel_spacing(image, subpath)
     offset_vox     = np.round(offset/vox).astype(np.uint16)
@@ -82,6 +87,12 @@ if __name__ == '__main__':
     data  = image[offset_vox[2]:ends[2], offset_vox[1]:ends[1], offset_vox[0]:ends[0]]
     data  = np.moveaxis(data, (0, 2), (2, 0))
 
+    if dapi_subpath:
+        image = z5py.File(image, use_zarr_format=False)[dapi_subpath]
+        dapi  = image[offset_vox[2]:ends[2], offset_vox[1]:ends[1], offset_vox[0]:ends[0]]
+        dapi  = np.moveaxis(data, (0, 2), (2, 0))
+        data  = np.maximum(0, data - dapi_factor * dapi).astype(np.uint16)
+
     eng = matlab.engine.start_matlab()
     air_localize_path = '/groups/scicompsoft/home/fleishmang/source'
     air_localize_path += '/AIRLOCALIZE1_5_PAR_batch'
@@ -91,7 +102,6 @@ if __name__ == '__main__':
     matlab_data = as_matlab(data)
     points = eng.AIRLOCALIZE_N5(params, matlab_data, output, nargout=1)
     points = np.array(points._data).reshape(points.size, order='F')
-    # TODO: according to Yuhan's code, x/y must be swapped in points (i.e. airlocalize: (y, x, z))
     # TODO: write default spot file for tiles that return 0 spots
     points[:, :3] = points[:, :3] * vox + offset
 
