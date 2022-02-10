@@ -1,14 +1,18 @@
+import os
 import numpy as np
 import matlab.engine
 from air_localize_automation.numpy_as_matlab import as_matlab
 from air_localize_automation.filter_spots import apply_foreground_mask
 from ClusterWrap.decorator import cluster
+import dask.array as da
+import dask.delayed as delayed
 
 
 def detect_spots(
     image,
     params_path,
     air_localize_path,
+    output_path=None,
 ):
     """
     """
@@ -18,10 +22,14 @@ def detect_spots(
     eng.addpath(air_localize_path)
     matlab_image = as_matlab(image)
 
+    # default output path is scratch directory
+    # this is specific to janelia
+    if output_path is None:
+        output_path = '/scratch/' + os.environ.get("USER")
+
     # run spot detection
-    # TODO: NEED AN OUTPUT DIRECTORY (TEMP?)
     spots = eng.AIRLOCALIZE_N5(
-        params_path, matlab_image, output, nargout=1,
+        params_path, matlab_image, output_path, nargout=1,
     )
 
     # reformat spots then quit engine
@@ -36,9 +44,9 @@ def detect_spots(
 def distributed_detect_spots(
     zarr_array,
     blocksize,
-    spacing,
     params_path,
     air_localize_path,
+    overlap=12,
     mask=None,
     cluster=None,
     cluster_kwargs={},
@@ -49,10 +57,6 @@ def distributed_detect_spots(
     # define mask to data grid size ratio
     if mask is not None:
         ratio = np.array(mask.shape) / zarr_array.shape
-
-    # compute overlap
-    # TODO: DETERMINE SOMETHING FOR OVERLAP
-    overlap = 
 
     # define closure for detect_spots function
     def detect_spots_closure(image, mask=None, block_info=None):
@@ -73,12 +77,12 @@ def distributed_detect_spots(
             # if there is no foreground, return null result
             if np.sum(mask_block) < 1:
                 result = np.empty((1,1,1), dtype=np.ndarray)
-                result[0, 0, 0] = np.zeros((0, 4))
+                result[0, 0, 0] = np.zeros((0, 4))  # TODO: CONFIRM THAT 4 HERE IS CORRECT
                 return result
 
         # get spots
         spots = detect_spots(
-            image, spacing, params_path, air_localize_path,
+            image, params_path, air_localize_path,
         )
 
         # filter out spots in the overlap region
@@ -95,13 +99,12 @@ def distributed_detect_spots(
         return result
 
 
-    # wrap data into dask array
-    dask_array = da.from_array(zarr_array, blocksize)
-
-    # delay mask
+    # wrap data and mask as dask objects
+    dask_array = da.from_array(zarr_array, chunks=blocksize)
     mask_d = delayed(mask) if mask is not None else None
 
     # run spot detection on overlapping blocks
+    # TODO: THINK OVER THE BOUNDARY CONDITION
     spots_as_grid = da.map_overlap(
         detect_spots_closure, dask_array,
         mask=mask_d,

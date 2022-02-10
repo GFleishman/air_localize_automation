@@ -11,8 +11,12 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     include_package_data=True,
     install_requires=[
-        "z5py",
         "numpy",
+        "scipy",
         "matlab",
+        "ClusterWrap",
+        "dask",
+        "dask[array]",
+        "dask[delayed]",
     ]
 )
