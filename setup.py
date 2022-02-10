@@ -15,6 +15,7 @@ setuptools.setup(
         "scipy",
         "matlab",
         "ClusterWrap",
+        "zarr",
         "dask",
         "dask[array]",
         "dask[delayed]",

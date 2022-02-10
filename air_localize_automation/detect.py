@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import matlab.engine
-from air_localize_automation.numpy_as_matlab import as_matlab
+from air_localize_automation.numpy_to_matlab import as_matlab
 from air_localize_automation.filter_spots import apply_foreground_mask
 from ClusterWrap.decorator import cluster
 import dask.array as da
@@ -20,6 +20,7 @@ def detect_spots(
     # prepare matlab engine and data
     eng = matlab.engine.start_matlab()
     eng.addpath(air_localize_path)
+    eng.addpath(air_localize_path + '/AIRLOCALIZE_1_5_subfunctions')
     matlab_image = as_matlab(image)
 
     # default output path is scratch directory
@@ -63,7 +64,7 @@ def distributed_detect_spots(
 
         # get block and block minus overlap origins
         block_origin = blocksize * np.array(block_info[0]['chunk-location'])
-        overlap_origin = np.maximum(0, block_origin - overlap)
+        overlap_origin = block_origin - overlap
 
         # check mask
         if mask is not None:
@@ -77,7 +78,7 @@ def distributed_detect_spots(
             # if there is no foreground, return null result
             if np.sum(mask_block) < 1:
                 result = np.empty((1,1,1), dtype=np.ndarray)
-                result[0, 0, 0] = np.zeros((0, 4))  # TODO: CONFIRM THAT 4 HERE IS CORRECT
+                result[0, 0, 0] = np.zeros((0, 5))
                 return result
 
         # get spots
@@ -104,13 +105,12 @@ def distributed_detect_spots(
     mask_d = delayed(mask) if mask is not None else None
 
     # run spot detection on overlapping blocks
-    # TODO: THINK OVER THE BOUNDARY CONDITION
     spots_as_grid = da.map_overlap(
         detect_spots_closure, dask_array,
         mask=mask_d,
         depth=overlap,
         dtype=np.ndarray,
-        boundary=0,
+        boundary='reflect',
         trim=False,
         chunks=(1,1,1),
     ).compute()
