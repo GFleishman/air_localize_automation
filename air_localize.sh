@@ -38,10 +38,11 @@ function initialize_environment {
   logdir="${outdir}/logs";    mkdir -p $logdir
   tiledir="${outdir}/tiles";  mkdir -p $tiledir
   BILLING='multifish'
-  PYTHON='/groups/scicompsoft/home/fleishmang/bin/miniconda3/bin/python3'
+  PYTHON='/groups/multifish/multifish/big_stream/bin/miniconda3/bin/python3'
   SCRIPTS='/groups/multifish/multifish/fleishmang/air_localize'
   CUT_TILES="$PYTHON ${SCRIPTS}/cut_tiles.py"
   AIR_LOCALIZE="$PYTHON ${SCRIPTS}/air_localize.py"
+  LIPOFUSCIN_FILTER="$PYTHON ${SCRIPTS}/lipofuscin_filter.py"
   MERGE_POINTS="$PYTHON ${SCRIPTS}/merge_points.py"
 }
 
@@ -89,6 +90,17 @@ for channel in ${channels[@]}; do
       $AIR_LOCALIZE $image /${channel}/${scale} ${tile}/coords.txt $params $tile _${channel}.txt \
                     $dapi_correction
   done
+
+  # TODO: make sure this works
+#  if [[ " $LIPOFUSCIN_DETECTION " == 1 ]]; then
+    for tile in $( ls -d ${tiledir}/*[0-9] ); do
+      tile_num=`basename $tile`
+      submit "lipofuscin_filter${tile_num}" "air_localize${tile_num}*" 1 \
+      $LIPOFUSCIN_FILTER ${tile}/air_localize_points_c0.txt ${tile}/air_localize_points_c1.txt ${tile} 1.28 0.42 0.999
+    done
+#  fi
+  # TODO: end todo
+
 
   submit "merge_points" "air_localize*_${channel}" 1 \
   $MERGE_POINTS $tiledir _${channel}.txt ${outdir}/merged_points_${channel}.txt \
