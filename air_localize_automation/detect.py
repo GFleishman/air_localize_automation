@@ -18,7 +18,7 @@ def detect_spots(
     """
 
     # prepare matlab engine and data
-    eng = matlab.engine.start_matlab()
+    eng = matlab.engine.start_matlab("-nodisplay -nodesktop -nojvm")
     eng.addpath(air_localize_path)
     eng.addpath(air_localize_path + '/AIRLOCALIZE_1_5_subfunctions')
     matlab_image = as_matlab(image)
