@@ -49,6 +49,7 @@ def distributed_detect_spots(
     air_localize_path,
     overlap=12,
     mask=None,
+    transpose=None,
     cluster=None,
     cluster_kwargs={},
 ):
@@ -81,10 +82,18 @@ def distributed_detect_spots(
                 result[0, 0, 0] = np.zeros((0, 5))
                 return result
 
+        # check transpose (because air localize requires xyz order)
+        if transpose is not None:
+            image = image.transpose( transpose )
+
         # get spots
         spots = detect_spots(
             image, params_path, air_localize_path,
         )
+
+        # if transposed restore input axis order
+        if transpose is not None:
+            spots[:, :3] = spots[:, :3][:, transpose]
 
         # filter out spots in the overlap region
         for i in range(3):
