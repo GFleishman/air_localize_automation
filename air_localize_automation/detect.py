@@ -1,5 +1,6 @@
-import os
+import os, psutil
 import numpy as np
+import matlab
 import matlab.engine
 from air_localize_automation.numpy_to_matlab import as_matlab
 from air_localize_automation.filter_spots import apply_foreground_mask
@@ -17,8 +18,19 @@ def detect_spots(
     """
     """
 
+    # get number of cores available
+    ncpus = os.environ.get("LSB_DJOB_NUMPROC")
+    if ncpus is None: ncpus = psutil.cpu_count(logical=False)
+    ncpus = 2 * int(ncpus)
+
+    # TODO: the matlab engine for python has a memory leak. MathWorks knows about this
+    #       but has not fixed it. It's tolerable for now, but for serious use an
+    #       alternative python/matlab integration might be necessary.
+    #       memory leak: https://bastibe.de/2015-10-29-matlab-engine-leaks.html
+    #       alternative integration: https://github.com/bastibe/transplant
     # prepare matlab engine and data
-    eng = matlab.engine.start_matlab("-nodisplay -nodesktop -nojvm")
+    eng = matlab.engine.start_matlab("-nodisplay -nodesktop -nojvm -nosplash")
+    eng.maxNumCompThreads(ncpus)
     eng.addpath(air_localize_path)
     eng.addpath(air_localize_path + '/AIRLOCALIZE_1_5_subfunctions')
     matlab_image = as_matlab(image)
@@ -36,6 +48,17 @@ def detect_spots(
     # reformat spots then quit engine
     spots = np.array(spots._data).reshape(spots.size, order='F')
     eng.quit()
+
+    # get intensity values at detected coordinates
+    if spots.shape == (0, 5):
+        spots = np.zeros((0, 6))
+    else:
+        coords = np.round(spots[:, :3]).astype(int)
+        for i in range(3):
+            coords[:, i] = np.maximum(0, coords[:, i])
+            coords[:, i] = np.minimum(image.shape[i]-1, coords[:, i])
+        intensities = image[coords[:, 0], coords[:, 1], coords[:, 2]]
+        spots = np.concatenate((spots, intensities[..., None]), axis=1)
 
     # return
     return spots
@@ -79,7 +102,7 @@ def distributed_detect_spots(
             # if there is no foreground, return null result
             if np.sum(mask_block) < 1:
                 result = np.empty((1,1,1), dtype=np.ndarray)
-                result[0, 0, 0] = np.zeros((0, 5))
+                result[0, 0, 0] = np.zeros((0, 6))
                 return result
 
         # check transpose (because air localize requires xyz order)
